@@ -1,6 +1,6 @@
 [submodule "src/submodules/utils"]
 	path = src/submodules/utils
 	url = git@github.com:lisper-inmove/python-utils.git
-[submodule "src/api"]
-	path = src/api
-	url = git@github.com:lisper-inmove/chatGPTApiProto.git
+[submodule "src/proto"]
+	path = src/proto
+	url = git@github.com:lisper-inmove/ChatApiProtobuf.git

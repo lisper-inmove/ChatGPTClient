@@ -4,9 +4,9 @@ from concurrent import futures
 
 import grpc
 import openai
-from api.chat_completion_pb2 import ChatResponse
-from api.chat_completion_pb2_grpc import ChatCompletionServicer
-import api.chat_completion_pb2_grpc as chat_completion_pb2_grpc
+from proto.grpc_api.grpc_chat_completion_pb2 import ChatResponse
+from proto.grpc_api.grpc_chat_completion_pb2_grpc import ChatCompletionServicer
+import proto.grpc_api.grpc_chat_completion_pb2_grpc as chat_completion_pb2_grpc
 
 from submodules.utils.protobuf_helper import ProtobufHelper as PH
 
