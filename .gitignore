@@ -6,3 +6,4 @@ proto/*.py
 *_pb2.py
 *.~undo-tree~
 src/api/*.py
+nohup.out
