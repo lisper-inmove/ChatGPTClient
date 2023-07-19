@@ -35,7 +35,7 @@ class ChatGPTClient(ChatGPTServicer):
             stream=True,
             api_key=self.api_key
         )
-        async for chunk in response:
+        for chunk in response:
             yield PH.to_obj(chunk, ChatCompletionResponse)
 
 
