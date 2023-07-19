@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import asyncio
 import random
-from concurrent import futures
 
 import grpc
 import openai
@@ -27,7 +27,7 @@ class ChatGPTClient(ChatGPTServicer):
         return self.api_keys[
             random.randint(0, len(self.api_keys)) % (len(self.api_keys))]
 
-    def ChatCompletion(self, request, context):
+    async def ChatCompletion(self, request, context):
         request = PH.to_dict(request)
         response = openai.ChatCompletion.create(
             model='gpt-3.5-turbo-16k',
@@ -35,18 +35,19 @@ class ChatGPTClient(ChatGPTServicer):
             stream=True,
             api_key=self.api_key
         )
-        for chunk in response:
+        async for chunk in response:
             yield PH.to_obj(chunk, ChatCompletionResponse)
 
-def serve() -> None:
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=5000))
+
+async def serve() -> None:
+    server = grpc.aio.server()
     chatgpt_pb2_grpc.add_ChatGPTServicer_to_server(ChatGPTClient(), server)
-    listen_addr = "[::]:50051"
+    listen_addr = '[::]:50051'
     server.add_insecure_port(listen_addr)
     logger.info(f"Starting server on {listen_addr}")
-    server.start()
-    server.wait_for_termination()
+    await server.start()
+    await server.wait_for_termination()
 
 
 if __name__ == "__main__":
-    serve()
+    asyncio.run(serve())
