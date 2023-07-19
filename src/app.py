@@ -29,13 +29,13 @@ class ChatGPTClient(ChatGPTServicer):
 
     async def ChatCompletion(self, request, context):
         request = PH.to_dict(request)
-        response = openai.ChatCompletion.create(
+        response = await openai.ChatCompletion.acreate(
             model='gpt-3.5-turbo-16k',
             messages=request.get('messages'),
             stream=True,
             api_key=self.api_key
         )
-        for chunk in response:
+        async for chunk in response:
             yield PH.to_obj(chunk, ChatCompletionResponse)
 
 
