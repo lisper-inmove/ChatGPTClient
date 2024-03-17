@@ -19,7 +19,7 @@ logger = Logger()
 class ChatGPTClient(ChatGPTServicer):
 
     def __init__(self):
-        self.api_keys = SysEnv.get("CHAT_GPT_API_KEYS").split(",")
+        self.api_keys = SysEnv.get("OPENAI_API_KEYS").split(",")
         logger.info(f"My App Keys: {self.api_keys}")
 
     @property
