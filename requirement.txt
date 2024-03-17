@@ -66,7 +66,7 @@ msgpack==1.0.5
 multidict==6.0.4
 neovim==0.3.1
 numpy==1.25.0
-openai==0.27.8
+openai
 packaging==23.1
 pandas==1.5.3
 pandasai==0.6.2
