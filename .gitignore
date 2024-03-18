@@ -7,3 +7,4 @@ proto/*.py
 *.~undo-tree~
 src/api/*.py
 nohup.out
+__pycache__
