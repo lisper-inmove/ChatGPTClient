@@ -4,6 +4,13 @@ dev:
 	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && python src/app.py
 run:
 	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && nohup python src/app.py &
+w-dev: # websocket dev
+	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && python src/wsserver.py
+
+api:
+	cd src/proto && make api-python
+entity:
+	cd src/proto && make entity
 grpc:
 	cd src/proto && make grpc-python && make grpc-typescript
 

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+"""start as grpc server"""
+
 import asyncio
 import random
 
@@ -65,7 +67,6 @@ class ChatGPTClient(ChatGPTServicer):
             if (score <= 0.81):
                 continue
             messageContent.append(content)
-        print(messageContent)
         messages = [
             {
                 'role': 'system',

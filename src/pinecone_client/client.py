@@ -13,7 +13,7 @@ def query_index(vector, index_name, vector_id):
     result = index.query(
         namespace="featherpdf",
         vector=vector,
-        top_k=3,
+        top_k=5,
         include_metadata=True,
         include_values=False,
     )
