@@ -21,3 +21,6 @@ test-pdf-embedding:
 
 test-query-embedding-text:
 	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && python src/tests/embedding_query.py
+
+test:
+	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && python src/tests/test.py

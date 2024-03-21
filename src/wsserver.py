@@ -11,11 +11,13 @@ from pinecone_client.client import query_index, upsert_index
 import proto.api.api_common_pb2 as api_common_pb
 import proto.api.api_featherpdf_pb2 as api_featherpdf_pb
 import proto.api.api_chitchat_pb2 as api_chitchat_pb
-from submodules.utils.pdf_util import download_pdf_async, read_pdf_sync_v3
+from submodules.utils.pdf_util import download_pdf_async, read_pdf_sync_v2
 from submodules.utils.protobuf_helper import ProtobufHelper as PH
 from submodules.utils.logger import Logger
 from submodules.utils.sys_env import SysEnv
 from session import Session
+
+from langchain.text_splitter import CharacterTextSplitter
 
 logger = Logger()
 
@@ -60,18 +62,25 @@ class Server:
     async def __handle_embedding_pdf_request(self, request):
         body = PH.to_obj(json.loads(request.content), api_featherpdf_pb.EmbeddingPdfRequest)
         pdf_path = await download_pdf_async(body.fileUrl, body.filename)
-        contents = read_pdf_sync_v3(pdf_path)
-        for index, content in enumerate(contents):
-            res = await self.aclient.embeddings.create(input=content, model="text-embedding-ada-002")
+        content = read_pdf_sync_v2(pdf_path)
+        content_splitter = CharacterTextSplitter(
+            separator = "\n",
+            chunk_size = 1000,
+            chunk_overlap = 500,
+            length_function = len
+        )
+        splitted_contents = content_splitter.split_text(content)
+        for index, splitted_content in enumerate(splitted_contents):
+            res = await self.aclient.embeddings.create(input=splitted_content, model="text-embedding-ada-002")
             embeds = [record.embedding for record in res.data]
-            upsert_index(embeds[0], content, body.indexName, f"{body.fileId}-{index}")
+            logger.info(f"Embedding content: {splitted_content}")
+            upsert_index(embeds[0], splitted_content, body.indexName, f"{body.fileId}-{index}")
 
-        content = "".join(contents);
         messages = [
             {
                 'role': "user",
                 "content": f"""
-                    Summarize this abstract delimited by triple slashes in three bullet points less than 500 words in markdown mode.
+                    Summarize this abstract delimited by triple slashes in 5 sentences less than 500 words in markdown mode.
                     Also you should highlight key concepts.
                     ///{content}///
                 """
@@ -82,6 +91,7 @@ class Server:
             conspectus += data.content
         response = api_featherpdf_pb.EmbeddingPdfResponse()
         response.conspectus = conspectus
+
         yield self.__wrap_response(response, action=api_common_pb.Action.EMBEDDING_PDF_RESPONSE)
 
     async def __handle_embedding_query_text_request(self, request):
@@ -112,9 +122,8 @@ class Server:
             messages = [
                 {
                     'role': 'system',
-                    'content': 'Use the following pieces of context (or previous conversaton if needed) to answer the users question in markdown format.',
+                    'content': 'Use the following pieces of context to answer the users question in markdown format.',
                 },
-                # previous messages
                 {
                     'role': "user",
                     "content": f"""CONTENT: {messageContent[0]} USER_INPUT: {body.text}"""
