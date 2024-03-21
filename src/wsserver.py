@@ -65,8 +65,8 @@ class Server:
         content = read_pdf_sync_v2(pdf_path)
         content_splitter = CharacterTextSplitter(
             separator = "\n",
-            chunk_size = 1000,
-            chunk_overlap = 500,
+            chunk_size = 800,
+            chunk_overlap = 200,
             length_function = len
         )
         splitted_contents = content_splitter.split_text(content)
@@ -108,6 +108,7 @@ class Server:
             if (score <= 0.75):
                 continue
             messageContent.append(content)
+        logger.info(f"messageContent: {' '.join(messageContent)}")
         if len(messageContent) == 0:
             data = api_chitchat_pb.ChitchatCommonResponse()
             data.role = "assistant"
@@ -126,7 +127,7 @@ class Server:
                 },
                 {
                     'role': "user",
-                    "content": f"""CONTENT: {messageContent[0]} USER_INPUT: {body.text}"""
+                    "content": f"""CONTENT: {" ".join(messageContent)} USER_INPUT: {body.text}"""
                 },
             ]
             async for data in self.ask_gpt4(messages):
