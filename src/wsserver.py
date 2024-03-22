@@ -87,8 +87,8 @@ class Server:
                 model=openai_constants.MODEL_TEXT_EMBEDDING_ADA_002
             )
             embeds = [record.embedding for record in res.data]
-            logger.info(f"Embedding content: {splitted_content}")
-            upsert_index(embeds[0], splitted_content, body.indexName, f"{body.fileId}-{index}")
+            logger.info(f"Embedding content: {index}")
+            await upsert_index(embeds[0], splitted_content, body.indexName, f"{body.fileId}-{index}")
 
         messages = [
             {
