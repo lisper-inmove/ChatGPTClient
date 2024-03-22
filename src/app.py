@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 """start as grpc server"""
 
 import asyncio
@@ -11,7 +9,7 @@ from openai import AsyncOpenAI
 import proto.grpc_api.grpc_chatgpt_pb2_grpc as chatgpt_pb2_grpc
 from proto.grpc_api.grpc_chatgpt_pb2 import ChatCompletionResponse
 from proto.grpc_api.grpc_chatgpt_pb2 import EmbeddingPdfRequest, EmbeddingPdfResponse
-from proto.grpc_api.grpc_chatgpt_pb2 import QueryEmbeddingTextRequest, QueryEmbeddingTextResponse
+from proto.grpc_api.grpc_chatgpt_pb2 import QueryEmbeddingTextResponse
 from proto.grpc_api.grpc_chatgpt_pb2_grpc import ChatGPTServicer
 
 from pinecone_client.client import upsert_index, query_index
@@ -48,7 +46,7 @@ class ChatGPTClient(ChatGPTServicer):
 
     async def EmbeddingPdf(self, request: EmbeddingPdfRequest, context):
         pdf_path = await download_pdf_async(request.fileUrl, request.filename)
-        contents = read_pdf_sync(pdf_path) 
+        contents = read_pdf_sync(pdf_path)
         for index, content in enumerate(contents):
             res = await self.aclient.embeddings.create(input=content, model="text-embedding-ada-002")
             embeds = [record.embedding for record in res.data]

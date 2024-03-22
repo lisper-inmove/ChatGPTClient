@@ -1,23 +1,27 @@
 """start as websocket server"""
 
+from typing import List
+
 import asyncio
 import json
 import os
 import random
 
-from openai import AsyncOpenAI
 import websockets
+from openai import AsyncOpenAI
 from pinecone_client.client import query_index, upsert_index
+from langchain.text_splitter import CharacterTextSplitter
+
 import proto.api.api_common_pb2 as api_common_pb
 import proto.api.api_featherpdf_pb2 as api_featherpdf_pb
 import proto.api.api_chitchat_pb2 as api_chitchat_pb
+from constants import openai as openai_constants
 from submodules.utils.pdf_util import download_pdf_async, read_pdf_sync_v2
 from submodules.utils.protobuf_helper import ProtobufHelper as PH
 from submodules.utils.logger import Logger
 from submodules.utils.sys_env import SysEnv
+from submodules.utils.profile import FuncTimeExpend
 from session import Session
-
-from langchain.text_splitter import CharacterTextSplitter
 
 logger = Logger()
 
@@ -34,16 +38,16 @@ class Server:
         return self.api_keys[
             random.randint(0, len(self.api_keys)) % (len(self.api_keys))]
 
-    async def handle_connection(self, websocket, path):
+    async def handle_connection(self, client, path):
         try:
-            setattr(websocket, "session", Session())
-            await self.__handle_connection(websocket, path)
+            setattr(client, "session", Session())
+            await self.__handle_connection(client, path)
         except websockets.ConnectionClosed as ex:
             logger.error(f"Connection Closed: {ex}")
 
-    async def __handle_connection(self, websocket, path):
-        logger.info(f"new connection: {websocket}");
-        async for message_json in websocket:
+    async def __handle_connection(self, client, path: str):
+        logger.info(f"new connection: {client}")
+        async for message_json in client:
             logger.info(f"get message: {message_json}")
             request = api_common_pb.Request()
             request.ParseFromString(message_json)
@@ -57,21 +61,25 @@ class Server:
                 async for r in response:
                     data = PH.to_json(r)
                     logger.info(f"Send back: {data}")
-                    await websocket.send(json.dumps(data))
+                    await client.send(json.dumps(data))
 
-    async def __handle_embedding_pdf_request(self, request):
+    @FuncTimeExpend
+    async def __handle_embedding_pdf_request(self, request: api_common_pb.Request):
         body = PH.to_obj(json.loads(request.content), api_featherpdf_pb.EmbeddingPdfRequest)
         pdf_path = await download_pdf_async(body.fileUrl, body.filename)
         content = read_pdf_sync_v2(pdf_path)
         content_splitter = CharacterTextSplitter(
-            separator = "\n",
-            chunk_size = 800,
-            chunk_overlap = 200,
-            length_function = len
+            separator="\n",
+            chunk_size=800,
+            chunk_overlap=200,
+            length_function=len
         )
         splitted_contents = content_splitter.split_text(content)
         for index, splitted_content in enumerate(splitted_contents):
-            res = await self.aclient.embeddings.create(input=splitted_content, model="text-embedding-ada-002")
+            res = await self.aclient.embeddings.create(
+                input=splitted_content,
+                model=openai_constants.MODEL_TEXT_EMBEDDING_ADA_002
+            )
             embeds = [record.embedding for record in res.data]
             logger.info(f"Embedding content: {splitted_content}")
             upsert_index(embeds[0], splitted_content, body.indexName, f"{body.fileId}-{index}")
@@ -94,9 +102,13 @@ class Server:
 
         yield self.__wrap_response(response, action=api_common_pb.Action.EMBEDDING_PDF_RESPONSE)
 
-    async def __handle_embedding_query_text_request(self, request):
+    @FuncTimeExpend
+    async def __handle_embedding_query_text_request(self, request: api_chitchat_pb.Request):
         body = PH.to_obj(json.loads(request.content), api_featherpdf_pb.QueryTextRequest)
-        res = await self.aclient.embeddings.create(input=body.text, model="text-embedding-ada-002")
+        res = await self.aclient.embeddings.create(
+            input=body.text,
+            model=openai_constants.MODEL_TEXT_EMBEDDING_ADA_002
+        )
         embeds = [record.embedding for record in res.data]
         queryResult = query_index(embeds[0], body.indexName, body.fileId)
         messageContent = []
@@ -114,7 +126,7 @@ class Server:
             data.role = "assistant"
             yield self.__wrap_response(data, api_common_pb.Action.EMBEDDING_QUERY_RESPONSE)
             data = api_chitchat_pb.ChitchatCommonResponse()
-            data.content = "没有查找到答案"
+            data.content = "Sorry, i can't find any answer."
             yield self.__wrap_response(data, api_common_pb.Action.EMBEDDING_QUERY_RESPONSE)
             data = api_chitchat_pb.ChitchatCommonResponse()
             data.finishReason = "stop"
@@ -133,12 +145,14 @@ class Server:
             async for data in self.ask_gpt4(messages):
                 yield self.__wrap_response(data, action=api_common_pb.Action.EMBEDDING_QUERY_RESPONSE)
 
-    async def ask_gpt4(self, messages):
+    @FuncTimeExpend
+    async def ask_gpt4(self, messages: List, stream: bool | None = None):
+        if (stream is None):
+            stream = True
         response = await self.aclient.chat.completions.create(
-            # model='gpt-3.5-turbo-16k',
-            model='gpt-4-turbo-preview',
+            model=openai_constants.MODEL_GPT_4_TURBO_PREVIEW,
             messages=messages,
-            stream=True
+            stream=stream
         )
         async for chunk in response:
             logger.info(f"opneai response: {chunk}")
@@ -152,7 +166,7 @@ class Server:
             data.model = chunk.model or ''
             yield data
 
-    def __wrap_response(self, data, action):
+    def __wrap_response(self, data, action: api_common_pb.Action):
         response = api_common_pb.Response()
         response.action = action
         response.content = json.dumps(PH.to_json(data));
