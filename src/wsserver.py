@@ -1,11 +1,12 @@
 """start as websocket server"""
 
+import time
 from typing import List
 
 import asyncio
 import json
-import os
 import random
+import psutil
 
 import websockets
 from openai import AsyncOpenAI
@@ -16,11 +17,12 @@ import proto.api.api_common_pb2 as api_common_pb
 import proto.api.api_featherpdf_pb2 as api_featherpdf_pb
 import proto.api.api_chitchat_pb2 as api_chitchat_pb
 from constants import openai as openai_constants
+from submodules.utils.idate import IDate
 from submodules.utils.pdf_util import download_pdf_async, read_pdf_sync_v2
 from submodules.utils.protobuf_helper import ProtobufHelper as PH
 from submodules.utils.logger import Logger
 from submodules.utils.sys_env import SysEnv
-from submodules.utils.profile import FuncTimeExpend
+from submodules.utils.profile import func_time_expend_async
 from session import Session
 
 logger = Logger()
@@ -28,42 +30,46 @@ logger = Logger()
 
 class Server:
 
-    def __init__(self, host="0.0.0.0", port=50052):
-        self.server = websockets.serve(self.handle_connection, host, port)
+    def __init__(self):
         self.api_keys = SysEnv.get("OPENAI_API_KEYS").split(",")
         self.aclient = AsyncOpenAI(api_key=self.api_key)
+        self.client_count = 0
 
     @property
     def api_key(self):
         return self.api_keys[
             random.randint(0, len(self.api_keys)) % (len(self.api_keys))]
 
-    async def handle_connection(self, client, path):
+    async def handle_connection(self, conn, path):
         try:
-            setattr(client, "session", Session())
-            await self.__handle_connection(client, path)
+            setattr(conn, "session", Session())
+            self.client_count += 1
+            await self.__handle_connection(conn, path)
         except websockets.ConnectionClosed as ex:
             logger.error(f"Connection Closed: {ex}")
+            self.client_count -= 1
 
-    async def __handle_connection(self, client, path: str):
-        logger.info(f"new connection: {client}")
-        async for message_json in client:
-            logger.info(f"get message: {message_json}")
-            request = api_common_pb.Request()
-            request.ParseFromString(message_json)
-            response = None
-            if (request.action == api_common_pb.Action.EMBEDDING_PDF):
-                response = self.__handle_embedding_pdf_request(request)
-            elif (request.action == api_common_pb.Action.EMBEDDING_QUERY_TEXT):
-                response = self.__handle_embedding_query_text_request(request)
-            logger.info(f"{request} --- {response}")
-            if response is not None:
-                async for r in response:
-                    data = PH.to_json(r)
-                    logger.info(f"Send back: {data}")
-                    await client.send(json.dumps(data))
+    async def __handle_connection(self, conn, path: str):
+        logger.info(f"new connection: {conn}")
+        while True:
+            async for message_json in conn:
+                logger.info(f"get message: {message_json}")
+                request = api_common_pb.Request()
+                request.ParseFromString(message_json)
+                response = None
+                if (request.action == api_common_pb.Action.EMBEDDING_PDF):
+                    response = self.__handle_embedding_pdf_request(request)
+                elif (request.action == api_common_pb.Action.EMBEDDING_QUERY_TEXT):
+                    response = self.__handle_embedding_query_text_request(request)
+                logger.info(f"{request} --- {response}")
+                if response is not None:
+                    async for r in response:
+                        data = PH.to_json(r)
+                        logger.info(f"Send back: {data}")
+                        await conn.send(json.dumps(data))
+            await conn.ping()
 
-    @FuncTimeExpend
+    @func_time_expend_async
     async def __handle_embedding_pdf_request(self, request: api_common_pb.Request):
         body = PH.to_obj(json.loads(request.content), api_featherpdf_pb.EmbeddingPdfRequest)
         pdf_path = await download_pdf_async(body.fileUrl, body.filename)
@@ -102,8 +108,8 @@ class Server:
 
         yield self.__wrap_response(response, action=api_common_pb.Action.EMBEDDING_PDF_RESPONSE)
 
-    @FuncTimeExpend
-    async def __handle_embedding_query_text_request(self, request: api_chitchat_pb.Request):
+    @func_time_expend_async
+    async def __handle_embedding_query_text_request(self, request: api_common_pb.Request):
         body = PH.to_obj(json.loads(request.content), api_featherpdf_pb.QueryTextRequest)
         res = await self.aclient.embeddings.create(
             input=body.text,
@@ -116,11 +122,11 @@ class Server:
             metadata = match['metadata']
             content = metadata["content"]
             score = match["score"]
-            logger.info(f"{body.text} {score} {content}")
+            # logger.info(f"{body.text} {score} {content}")
             if (score <= 0.75):
                 continue
             messageContent.append(content)
-        logger.info(f"messageContent: {' '.join(messageContent)}")
+        # logger.info(f"messageContent: {' '.join(messageContent)}")
         if len(messageContent) == 0:
             data = api_chitchat_pb.ChitchatCommonResponse()
             data.role = "assistant"
@@ -145,7 +151,7 @@ class Server:
             async for data in self.ask_gpt4(messages):
                 yield self.__wrap_response(data, action=api_common_pb.Action.EMBEDDING_QUERY_RESPONSE)
 
-    @FuncTimeExpend
+    @func_time_expend_async
     async def ask_gpt4(self, messages: List, stream: bool | None = None):
         if (stream is None):
             stream = True
@@ -155,7 +161,7 @@ class Server:
             stream=stream
         )
         async for chunk in response:
-            logger.info(f"opneai response: {chunk}")
+            # logger.info(f"opneai response: {chunk}")
             data = api_chitchat_pb.ChitchatCommonResponse()
             choice = chunk.choices[0]
             delta = choice.delta
@@ -166,6 +172,17 @@ class Server:
             data.model = chunk.model or ''
             yield data
 
+    async def watcher(self):
+        while True:
+            cpu_percent = psutil.cpu_percent(percpu=True)
+            memory_percent = psutil.virtual_memory().percent
+            logger.info(f"""
+                cpu: {cpu_percent}
+                mem: {memory_percent}
+                conn: {self.client_count}
+            """)
+            await asyncio.sleep(5)
+
     def __wrap_response(self, data, action: api_common_pb.Action):
         response = api_common_pb.Response()
         response.action = action
@@ -173,11 +190,12 @@ class Server:
         return response
 
 
-if __name__ == "__main__":
-
-    root_path = os.path.dirname(os.path.realpath(__file__))
-    SysEnv.set(SysEnv.APPROOT, root_path)
-
+async def main(host = "0.0.0.0", port = 50052):
     server = Server()
-    asyncio.get_event_loop().run_until_complete(server.server)
-    asyncio.get_event_loop().run_forever()
+    task_websocket = websockets.serve(server.handle_connection, host, port)
+    task_watcher = asyncio.create_task(server.watcher())
+    await asyncio.gather(task_websocket, task_watcher)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
