@@ -95,7 +95,8 @@ class Server:
                 'role': "user",
                 "content": f"""
                     Summarize this abstract delimited by triple slashes in 5 sentences less than 500 words in markdown mode.
-                    Also you should highlight key concepts.
+                    1. Just give me pure text response.
+                    2. Highlight high frequency words if they are contained in the summary.
                     ///{content}///
                 """
             }
