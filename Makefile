@@ -1,9 +1,9 @@
 install-lib:
 	pip install -r requirement.txt
 dev:
-	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && python src/app.py
+	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && python src/grpc_server.py
 run:
-	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && nohup python src/app.py &
+	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && nohup python src/grpc_server.py &
 w-dev: # websocket dev
 	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && python src/wsserver.py
 
