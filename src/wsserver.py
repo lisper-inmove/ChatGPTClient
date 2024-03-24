@@ -69,6 +69,15 @@ class Server:
                         await conn.send(json.dumps(data))
             await conn.ping()
 
+    async def __process_embedding(self, body, index, splitted_content):
+        res = await self.aclient.embeddings.create(
+            input=splitted_content,
+            model=openai_constants.MODEL_TEXT_EMBEDDING_ADA_002
+        )
+        embeds = [record.embedding for record in res.data]
+        logger.info(f"Embedding content: {index}")
+        await upsert_index(embeds[0], splitted_content, body.indexName, f"{body.fileId}-{index}")
+
     @func_time_expend_async
     async def __handle_embedding_pdf_request(self, request: api_common_pb.Request):
         body = PH.to_obj(json.loads(request.content), api_featherpdf_pb.EmbeddingPdfRequest)
@@ -81,14 +90,10 @@ class Server:
             length_function=len
         )
         splitted_contents = content_splitter.split_text(content)
+        tasks = []
         for index, splitted_content in enumerate(splitted_contents):
-            res = await self.aclient.embeddings.create(
-                input=splitted_content,
-                model=openai_constants.MODEL_TEXT_EMBEDDING_ADA_002
-            )
-            embeds = [record.embedding for record in res.data]
-            logger.info(f"Embedding content: {index}")
-            await upsert_index(embeds[0], splitted_content, body.indexName, f"{body.fileId}-{index}")
+            tasks.append(self.__process_embedding(body, index, splitted_content))
+        await asyncio.gather(*tasks)
 
         messages = [
             {
@@ -106,6 +111,8 @@ class Server:
             conspectus += data.content
         response = api_featherpdf_pb.EmbeddingPdfResponse()
         response.conspectus = conspectus
+
+        # response = api_featherpdf_pb.EmbeddingPdfResponse()
 
         yield self.__wrap_response(response, action=api_common_pb.Action.EMBEDDING_PDF_RESPONSE)
 
