@@ -34,6 +34,14 @@ class ChatGPTClient(ChatGPTServicer):
         return self.api_keys[
             random.randint(0, len(self.api_keys)) % (len(self.api_keys))]
 
+    async def ChatCompletionV2(self, request):
+        response = await self.aclient.chat.completions.create(
+            model='gpt-3.5-turbo-16k',
+            messages=request.get('messages'),
+            stream=True)
+        async for chunk in response:
+            yield PH.to_obj(chunk.dict(), ChatCompletionResponse)
+
     async def ChatCompletion(self, request, context):
         request = PH.to_dict(request)
         response = await self.aclient.chat.completions.create(

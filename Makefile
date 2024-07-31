@@ -15,7 +15,7 @@ grpc:
 	cd src/proto && make grpc-python && make grpc-typescript
 
 test-chat-completion:
-	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && python src/tests/chat_completion.py
+	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && rlwrap python src/tests/chat.py
 test-pdf-embedding:
 	export PYTHONPATH=`pwd`/src:`pwd`/src/proto/grpc_api && python src/tests/embedding_pdf.py
 
